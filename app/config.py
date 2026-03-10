@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    google_application_credentials: str
+    gcp_raw_key: str
     default_bucket_name: str
 
     class Config:

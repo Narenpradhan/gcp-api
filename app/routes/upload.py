@@ -1,35 +1,44 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from app.services.gcs_service import gcs_service
+from app.config import settings
 from typing import Optional
 
 router = APIRouter()
 
 @router.post("/upload")
-async def upload_to_gcs(
+async def upload_and_sign(
     file: UploadFile = File(...),
-    bucket_path: str = Form(...), # e.g., "folder/subfolder/filename.jpg"
+    bucket_path: str = Form(...),  # e.g. "profiles/user_1/avatar.png"
     bucket_name: Optional[str] = Form(None),
     expiration_minutes: int = Form(60)
 ):
     try:
-        # Use provided bucket or fallback to config
-        from app.config import settings
+        # 1. Determine target bucket
         target_bucket = bucket_name or settings.default_bucket_name
         
-        # 1. Upload the file
-        blob = await gcs_service.upload_file(file, target_bucket, bucket_path)
+        # 2. Upload to GCS
+        await gcs_service.upload_file(file, target_bucket, bucket_path)
         
-        # 2. Generate Signed URL
-        signed_url, expiry = gcs_service.generate_signed_url(
-            target_bucket, bucket_path, expiration_minutes
+        # 3. Generate the Signed URL
+        signed_url, expires_at = gcs_service.generate_signed_url(
+            target_bucket, 
+            bucket_path, 
+            expiration_minutes
         )
 
         return {
-            "message": "File uploaded successfully",
-            "file_path": f"gs://{target_bucket}/{bucket_path}",
-            "signed_url": signed_url,
-            "expires_at": expiry.isoformat(),
-            "content_type": file.content_type
+            "status": "success",
+            "upload_details": {
+                "bucket": target_bucket,
+                "file_path": bucket_path,
+                "content_type": file.content_type
+            },
+            "access_details": {
+                "signed_url": signed_url,
+                "expires_at_utc": expires_at.isoformat(),
+                "valid_for_minutes": expiration_minutes
+            }
         }
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"GCS Error: {str(e)}")
